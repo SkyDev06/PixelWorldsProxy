@@ -1,5 +1,5 @@
 # Pixel Worlds Proxy
-Simple Proxy made using NodeJS socket
+Simple Proxy made using NodeJS net
 
 requirement:
 - net (npm install net)
