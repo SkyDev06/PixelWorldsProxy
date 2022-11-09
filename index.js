@@ -14,14 +14,25 @@ var net = require("net");
 var proxy = new net.Socket();
 var server = net.createServer();
 var bson = require("bson");
+var fs = require("fs");
 var socket; // Getting Socket Data From Server
 
 var host = "127.0.0.1"; // IP Host
 var ip = "44.194.163.69" // IP Game
 var port = 10001; // PORT Game && Host
 
+function real_packet_logs(data) {
+    fs.appendFileSync("logs.txt", data);
+}
+
 function bsonDec(data) {
-    return bson.deserialize(data.slice(4));
+    try {
+        return bson.deserialize(data.slice(4), {
+            allowObjectSmallerThanBufferSize: true,
+            promoteBuffers: true
+        });
+    }
+    catch (e) {}
 }
 
 function bsonEnc(json) {
@@ -32,37 +43,8 @@ function bsonEnc(json) {
     return buf;
 }
 
-function SBH(data) {
-    try {
-        var msgCount = data["mc"];
-        for(let i = 0; i < msgCount; i++) {
-            var current = data["m" + String(i)];
-            var messageId = current["ID"];
-            const logs = `[SERVER] MESSAGE ID: ${messageId} Data: ${String(JSON.stringify(current))}`;
-            console.log(logs);
-        }
-    }
-    catch (e) {
-        console.log(`[SERVER] ${e}!`);
-    }
-}
-
-function CBH(data) {
-    try {
-        var msgCount = data["mc"];
-        for(let i = 0; i < msgCount; i++) {
-            var current = data["m" + String(i)];
-            var messageId = current["ID"];
-            const logs = `[CLIENT] MESSAGE ID: ${messageId} Data: ${String(JSON.stringify(data))}`;
-            console.log(logs);
-        }
-    }
-    catch (e) {
-        console.log(`[CLIENT] ${e}!`);
-    }
-}
-
 function ProcessPacket(data, type) {
+    if (data == null || !data.hasOwnProperty("mc")) return data;
     var msgCount = data["mc"];
     for(let i = 0; i < msgCount; i++) {
         var current = data["m" + String(i)];
@@ -70,13 +52,6 @@ function ProcessPacket(data, type) {
         switch (messageId) {
             case "OoIP": // Subserver (Not Working For Now)
                 var ip_subserver = current["IP"];
-                if (ip_subserver) {
-                    if (ip_subserver.includes("prod.gamev8")) {
-                        ip_subserver = ip;
-                    }
-                    proxy.destroy();
-                    proxy.connect(port, ip_subserver);
-                }
                 break;
             case "WCM":
                 var msg = current["msg"];
@@ -94,21 +69,18 @@ function ProcessPacket(data, type) {
         
         if (i > 0) {
             if (type == "CLIENT") {
-                CBH(data);
+                console.log(`[CLIENT] MESSAGE ID: ${messageId} Data: ${String(JSON.stringify(data))}`)
             }
             else if (type == "SERVER") {
-                SBH(data);
-            }
-            else {
-                return;
+                console.log(`[SERVER] MESSAGE ID: ${messageId} Data: ${String(JSON.stringify(current))}`)
             }
         }
     }
 }
 
-function Proxy_Game() {
-    proxy.connect(port, ip, function() {
-        console.log(`[PROXY] Connected To ${ip}:${port}`);
+function Proxy_Game(ip_) {
+    proxy.connect(port, ip_, function() {
+        console.log(`[PROXY] Connected To ${ip_}:${port}`);
     });
 
     // Proxy Data Handler
@@ -116,6 +88,7 @@ function Proxy_Game() {
         try {
             ProcessPacket(bsonDec(data), "CLIENT");
             socket.write(data); // Send To Server
+            if (JSON.stringify(bsonDec(data)) != undefined) real_packet_logs(`[CLIENT] ${JSON.stringify(bsonDec(data))}\n`);
         }
         catch (e) {
             console.log(`[CLIENT] ${e}`);
@@ -130,6 +103,7 @@ function Host_Handler() {
             try {
                 ProcessPacket(bsonDec(data), "SERVER");
                 proxy.write(data); // Send To Client
+                if (JSON.stringify(bsonDec(data)) != undefined) real_packet_logs(`[SERVER] ${JSON.stringify(bsonDec(data))}\n`);
             }
             catch (e) {
                 console.log(`[SERVER] ${e}`);
@@ -142,7 +116,7 @@ function Host_Handler() {
         console.log(`[SERVER] Server Listen ${host}:${port}`);
 
         // Proxy Game
-        Proxy_Game(ip, port);
+        Proxy_Game(ip);
     });
 }
 
